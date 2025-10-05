@@ -36,7 +36,12 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
   const accumYRef = useRef(0);
   const startTSRef = useRef(0);
 
-  const threshold = Math.max(10, Math.floor(tile * 0.8));
+  const thresholdH = Math.max(4, Math.floor(tile * 0.3));
+  const thresholdV = Math.max(4, Math.floor(tile * 0.2));
+  const quickVX = 0.22; // quick swipe horizontal
+  const quickVY = 0.6;  // quick swipe vertical
+  const minRepeatMs = 70; // rate limit for velocity-based extra moves
+  const lastMoveTsRef = useRef(0);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -49,18 +54,32 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
     onPanResponderMove: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
       // Horizontal discrete steps using accumulated delta
       const dx = gs.dx - accumXRef.current;
-      if (Math.abs(dx) >= threshold) {
-        const steps = Math.trunc(dx / threshold);
+      if (Math.abs(dx) >= thresholdH) {
+        const steps = Math.trunc(dx / thresholdH);
         const dir = steps > 0 ? 1 : -1;
         for (let i = 0; i < Math.abs(steps); i++) onMove && onMove(dir);
-        accumXRef.current += steps * threshold;
+        accumXRef.current += steps * thresholdH;
+      }
+
+      // Velocity-assisted nudge to feel snappier
+      const now = Date.now();
+      if (Math.abs(gs.vx) > quickVX && now - lastMoveTsRef.current > minRepeatMs) {
+        onMove && onMove(gs.vx > 0 ? 1 : -1);
+        lastMoveTsRef.current = now;
       }
 
       // Soft drop once per threshold step
       const dy = gs.dy - accumYRef.current;
-      if (dy >= threshold) {
+      if (dy >= thresholdV) {
+        const stepsV = Math.trunc(dy / thresholdV);
+        for (let i = 0; i < stepsV; i++) onSoftDrop && onSoftDrop();
+        accumYRef.current += stepsV * thresholdV;
+      }
+
+      // Velocity-assisted soft drop
+      if (gs.vy > quickVY && now - lastMoveTsRef.current > minRepeatMs) {
         onSoftDrop && onSoftDrop();
-        accumYRef.current += threshold;
+        lastMoveTsRef.current = now;
       }
     },
     onPanResponderRelease: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
@@ -71,11 +90,11 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
         onRotate && onRotate(1);
         return;
       }
-      if (onHardDrop && (gs.vy > 1.2 || gs.dy > tile * 3)) {
+      if (onHardDrop && (gs.vy > 1.1 || gs.dy > tile * 2.5)) {
         onHardDrop();
       }
     },
-  }), [tile, threshold, onMove, onSoftDrop, onHardDrop, onRotate]);
+  }), [tile, thresholdH, thresholdV, onMove, onSoftDrop, onHardDrop, onRotate]);
 
   const ghost = useMemo(() => {
     if (!state.falling) return null;
