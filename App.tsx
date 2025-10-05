@@ -1,9 +1,8 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useReducer, useRef } from 'react';
-import { SafeAreaView, StatusBar, View, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView, StatusBar, View, StyleSheet, ScrollView, Pressable, Text } from 'react-native';
 import BoardView from './src/components/BoardView';
 import HUD from './src/components/HUD';
-import Controls from './src/components/Controls';
 import { initialState, reducer } from './src/game/reducer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,20 +39,22 @@ export default function App() {
           <HUD state={state} direction="row" />
         </View>
         <View style={styles.boardWrap}>
-          <BoardView state={state} maxWidthOverride={undefined} />
-        </View>
-        <View style={styles.controlsWrap}>
-          <Controls
-            status={state.status}
-            onLeft={() => dispatch({ type: 'MOVE', dx: -1 })}
-            onRight={() => dispatch({ type: 'MOVE', dx: +1 })}
+          <BoardView
+            state={state}
+            maxWidthOverride={undefined}
+            onMove={(dx) => dispatch({ type: 'MOVE', dx })}
             onSoftDrop={() => dispatch({ type: 'SOFT_DROP' })}
             onHardDrop={() => dispatch({ type: 'HARD_DROP' })}
-            onRotateCW={() => dispatch({ type: 'ROTATE', dir: 1 })}
-            onRotateCCW={() => dispatch({ type: 'ROTATE', dir: -1 })}
-            onPause={() => dispatch({ type: 'PAUSE_TOGGLE' })}
-            onNewGame={() => dispatch({ type: 'NEW_GAME' })}
+            onRotate={(dir) => dispatch({ type: 'ROTATE', dir })}
           />
+        </View>
+        <View style={styles.actionsRow}>
+          <Pressable onPress={() => dispatch({ type: 'PAUSE_TOGGLE' })} style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}>
+            <Text style={styles.actionText}>{state.status === 'paused' ? 'Resume' : 'Pause'}</Text>
+          </Pressable>
+          <Pressable onPress={() => dispatch({ type: 'NEW_GAME' })} style={({ pressed }) => [styles.actionBtn, styles.grow, pressed && styles.pressed]}>
+            <Text style={styles.actionText}>New Game</Text>
+          </Pressable>
         </View>
       </View>
     </SafeAreaView>
@@ -66,4 +67,19 @@ const styles = StyleSheet.create({
   top: { alignItems: 'center' },
   boardWrap: { alignItems: 'center' },
   controlsWrap: { paddingTop: 8 },
+  actionsRow: { flexDirection: 'row', gap: 10 },
+  actionBtn: {
+    backgroundColor: '#1b1f27',
+    borderColor: '#2a2f3a',
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 120,
+  },
+  actionText: { color: '#e6ebf5', fontSize: 16, fontWeight: '700' },
+  grow: { flex: 1 },
+  pressed: { opacity: 0.85 },
 });

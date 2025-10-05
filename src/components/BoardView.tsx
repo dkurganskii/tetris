@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanResponderGestureState } from 'react-native';
 import type { GameState } from '../game/types';
 import { ghostY } from '../game/utils';
 
@@ -14,7 +14,14 @@ const COLORS: Record<number, string> = {
   7: '#ff6060', // Z
 };
 
-export default function BoardView({ state, maxWidthOverride }: { state: GameState; maxWidthOverride?: number }) {
+type Handlers = {
+  onMove?: (dx: number) => void;
+  onSoftDrop?: () => void;
+  onHardDrop?: () => void;
+  onRotate?: (dir: 1 | -1) => void;
+};
+
+export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop, onHardDrop, onRotate }: { state: GameState; maxWidthOverride?: number } & Handlers) {
   const cols = state.grid[0].length;
   const rows = state.grid.length;
   const win = Dimensions.get('window');
@@ -24,6 +31,52 @@ export default function BoardView({ state, maxWidthOverride }: { state: GameStat
   const width = cols * tile;
   const height = rows * tile;
 
+  // Gesture handling (tap to rotate, drag to move, quick flick down to hard drop)
+  const accumXRef = useRef(0);
+  const accumYRef = useRef(0);
+  const startTSRef = useRef(0);
+
+  const threshold = Math.max(10, Math.floor(tile * 0.8));
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => {
+      accumXRef.current = 0;
+      accumYRef.current = 0;
+      startTSRef.current = Date.now();
+    },
+    onPanResponderMove: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
+      // Horizontal discrete steps using accumulated delta
+      const dx = gs.dx - accumXRef.current;
+      if (Math.abs(dx) >= threshold) {
+        const steps = Math.trunc(dx / threshold);
+        const dir = steps > 0 ? 1 : -1;
+        for (let i = 0; i < Math.abs(steps); i++) onMove && onMove(dir);
+        accumXRef.current += steps * threshold;
+      }
+
+      // Soft drop once per threshold step
+      const dy = gs.dy - accumYRef.current;
+      if (dy >= threshold) {
+        onSoftDrop && onSoftDrop();
+        accumYRef.current += threshold;
+      }
+    },
+    onPanResponderRelease: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
+      const dt = Date.now() - startTSRef.current;
+      const dist = Math.hypot(gs.dx, gs.dy);
+      const smallTap = dist < 8 && dt < 250;
+      if (smallTap) {
+        onRotate && onRotate(1);
+        return;
+      }
+      if (onHardDrop && (gs.vy > 1.2 || gs.dy > tile * 3)) {
+        onHardDrop();
+      }
+    },
+  }), [tile, threshold, onMove, onSoftDrop, onHardDrop, onRotate]);
+
   const ghost = useMemo(() => {
     if (!state.falling) return null;
     const y = ghostY(state.grid, state.falling);
@@ -31,7 +84,7 @@ export default function BoardView({ state, maxWidthOverride }: { state: GameStat
   }, [state.grid, state.falling]);
 
   return (
-    <View style={[styles.wrapper, { width, height }]}>      
+    <View style={[styles.wrapper, { width, height }]} {...panResponder.panHandlers}>      
       {state.grid.map((row, ry) => (
         <View key={ry} style={{ flexDirection: 'row' }}>
           {row.map((c, rx) => (
