@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "falling-blocks",
-    "slug": "falling-blocks",
+    "name": "Tetris Slim",
+    "slug": "tetris-slim",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
