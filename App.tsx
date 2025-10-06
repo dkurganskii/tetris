@@ -1,4 +1,3 @@
-import 'react-native-gesture-handler';
 import React, { useEffect, useReducer, useRef } from 'react';
 import { SafeAreaView, StatusBar, View, StyleSheet, ScrollView, Pressable, Text } from 'react-native';
 import BoardView from './src/components/BoardView';
