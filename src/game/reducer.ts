@@ -1,7 +1,8 @@
-import type { GameState, FallingPiece, PieceId } from './types';
+import type { GameState, FallingPiece, PieceId, DifficultyLevel } from './types';
 import { emptyGrid, collides, mergePiece, clearLines, scoreForClears, tryMove, tryRotate, gravityForLevel } from './utils';
 import { SevenBag } from './bag';
 import { baseMatrix } from './pieces';
+import { getDifficultySettings } from './difficulty';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Action =
@@ -12,6 +13,7 @@ type Action =
   | { type: 'ROTATE'; dir: 1 | -1 }
   | { type: 'PAUSE_TOGGLE' }
   | { type: 'NEW_GAME' }
+  | { type: 'SET_DIFFICULTY'; difficulty: DifficultyLevel }
   | { type: 'LOAD_BEST'; best: number };
 
 let bag = new SevenBag();
@@ -29,9 +31,10 @@ async function saveBest(best: number) {
   try { await AsyncStorage.setItem('@bestScore', String(best)); } catch {}
 }
 
-export function initialState(bestScore = 0): GameState {
+export function initialState(bestScore = 0, difficulty: DifficultyLevel = 'medium'): GameState {
   bag = new SevenBag();
   const { piece, next } = spawn([]);
+  const settings = getDifficultySettings(difficulty);
   return {
     grid: emptyGrid(),
     falling: piece,
@@ -42,9 +45,10 @@ export function initialState(bestScore = 0): GameState {
     bestScore,
     combo: -1, // -1 means no combo yet
     status: 'playing',
-    gravityMs: gravityForLevel(0),
+    difficulty,
+    gravityMs: settings.gravityMs,
     gravityAcc: 0,
-    lockDelayMs: 500,
+    lockDelayMs: settings.lockDelayMs,
     lockAcc: null,
   };
 }
@@ -62,7 +66,17 @@ export function reducer(state: GameState, a: Action): GameState {
       return state;
 
     case 'NEW_GAME':
-      return initialState(state.bestScore);
+      return initialState(state.bestScore, state.difficulty);
+
+    case 'SET_DIFFICULTY': {
+      const settings = getDifficultySettings(a.difficulty);
+      return {
+        ...state,
+        difficulty: a.difficulty,
+        gravityMs: settings.gravityMs,
+        lockDelayMs: settings.lockDelayMs,
+      };
+    }
 
     case 'MOVE': {
       if (!state.falling) return state;

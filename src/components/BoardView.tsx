@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanResponderGestureState } from 'react-native';
 import type { GameState } from '../game/types';
 import { ghostY } from '../game/utils';
+import { getDifficultySettings } from '../game/difficulty';
 
 const COLORS: Record<number, string> = {
   0: '#111214',
@@ -42,6 +43,7 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
   const quickVY = 0.6;  // quick swipe vertical
   const minRepeatMs = 70; // rate limit for velocity-based extra moves
   const lastMoveTsRef = useRef(0);
+  const difficultySettings = getDifficultySettings(state.difficulty);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -90,17 +92,17 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
         onRotate && onRotate(1);
         return;
       }
-      if (onHardDrop && (gs.vy > 1.1 || gs.dy > tile * 2.5)) {
+      if (onHardDrop && difficultySettings.hardDropEnabled && (gs.vy > 1.1 || gs.dy > tile * 2.5)) {
         onHardDrop();
       }
     },
-  }), [tile, thresholdH, thresholdV, onMove, onSoftDrop, onHardDrop, onRotate]);
-
+  }), [tile, thresholdH, thresholdV, onMove, onSoftDrop, onHardDrop, onRotate, difficultySettings.hardDropEnabled]);
+  
   const ghost = useMemo(() => {
-    if (!state.falling) return null;
+    if (!state.falling || !difficultySettings.ghostPiece) return null;
     const y = ghostY(state.grid, state.falling);
     return { ...state.falling, y };
-  }, [state.grid, state.falling]);
+  }, [state.grid, state.falling, difficultySettings.ghostPiece]);
 
   return (
     <View style={[styles.wrapper, { width, height }]} {...panResponder.panHandlers}>      
