@@ -1,15 +1,17 @@
 import React, { useEffect, useReducer, useRef } from 'react';
-import { SafeAreaView, StatusBar, View, StyleSheet, ScrollView, Pressable, Text } from 'react-native';
+import { SafeAreaView, StatusBar, View, StyleSheet, ScrollView, Pressable, Text, Animated } from 'react-native';
 import BoardView from './src/components/BoardView';
 import HUD from './src/components/HUD';
 import DifficultySelector from './src/components/DifficultySelector';
 import { initialState, reducer } from './src/game/reducer';
 import { getDifficultySettings } from './src/game/difficulty';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined as any, () => initialState(0));
   const [showDifficultySelector, setShowDifficultySelector] = React.useState(false);
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
 
   // Load best score from storage
   useEffect(() => {
@@ -35,10 +37,45 @@ export default function App() {
 
   const difficultySettings = getDifficultySettings(state.difficulty);
 
+  // Screen shake animation for hard drop
+  const triggerScreenShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnimation, {
+        toValue: 3,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: -3,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 2,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: -2,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 0,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handleHardDrop = () => {
+    dispatch({ type: 'HARD_DROP' });
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.container}>
+      <Animated.View style={[styles.container, { transform: [{ translateX: shakeAnimation }] }]}>
         {showDifficultySelector ? (
           <View style={styles.difficultyContainer}>
             <DifficultySelector
@@ -72,7 +109,11 @@ export default function App() {
                 maxWidthOverride={undefined}
                 onMove={(dx) => dispatch({ type: 'MOVE', dx })}
                 onSoftDrop={() => dispatch({ type: 'SOFT_DROP' })}
-                onHardDrop={() => dispatch({ type: 'HARD_DROP' })}
+                onHardDrop={handleHardDrop}
+                onHardDropStart={() => {
+                  triggerScreenShake();
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                }}
                 onRotate={(dir) => dispatch({ type: 'ROTATE', dir })}
               />
             </View>
@@ -84,9 +125,38 @@ export default function App() {
                 <Text style={styles.actionText}>New Game</Text>
               </Pressable>
             </View>
+            <View style={styles.testRow}>
+                      <Pressable onPress={() => {
+                        triggerScreenShake();
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                        dispatch({ type: 'HARD_DROP' });
+                      }} style={({ pressed }) => [styles.testBtn, pressed && styles.pressed]}>
+                        <Text style={styles.testText}>Test Hard Drop</Text>
+                      </Pressable>
+                      <Pressable onPress={() => {
+                        // Trigger lightning trails manually
+                        if (state.falling) {
+                          const color = ['#4dd2ff', '#ffd84d', '#b180ff', '#4d7aff', '#ff9a4d', '#4dff88', '#ff6060'][['I','O','T','J','L','S','Z'].indexOf(state.falling.id)];
+                          const tile = Math.floor(Math.min(380 / 10, 560 / 16));
+                          state.falling.m.forEach((row, y) => {
+                            row.forEach((cell, x) => {
+                              if (cell) {
+                                const fx = (state.falling!.x + x) * tile;
+                                const fy = (state.falling!.y + y) * tile;
+                                if (fy >= 0) {
+                                  // Create trail manually
+                                }
+                              }
+                            });
+                          });
+                        }
+                      }} style={({ pressed }) => [styles.testBtn, pressed && styles.pressed]}>
+                        <Text style={styles.testText}>Test Lightning</Text>
+                      </Pressable>
+            </View>
           </>
         )}
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -136,4 +206,28 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   backBtnText: { color: '#e6ebf5', fontSize: 16, fontWeight: '600' },
+  testRow: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    marginTop: 8,
+    justifyContent: 'center',
+  },
+  testBtn: {
+    backgroundColor: '#2a2f3a',
+    borderColor: '#3a3f4a',
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: 120,
+  },
+  testText: { 
+    color: '#e6ebf5', 
+    fontSize: 12, 
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });

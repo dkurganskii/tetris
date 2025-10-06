@@ -1,6 +1,6 @@
-import React, { useMemo, useRef } from 'react';
-import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanResponderGestureState } from 'react-native';
-import type { GameState } from '../game/types';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanResponderGestureState, Animated } from 'react-native';
+import type { GameState, FallingPiece } from '../game/types';
 import { ghostY } from '../game/utils';
 import { getDifficultySettings } from '../game/difficulty';
 
@@ -20,9 +20,10 @@ type Handlers = {
   onSoftDrop?: () => void;
   onHardDrop?: () => void;
   onRotate?: (dir: 1 | -1) => void;
+  onHardDropStart?: () => void;
 };
 
-export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop, onHardDrop, onRotate }: { state: GameState; maxWidthOverride?: number } & Handlers) {
+export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop, onHardDrop, onRotate, onHardDropStart }: { state: GameState; maxWidthOverride?: number } & Handlers) {
   const cols = state.grid[0].length;
   const rows = state.grid.length;
   const win = Dimensions.get('window');
@@ -44,6 +45,51 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
   const minRepeatMs = 70; // rate limit for velocity-based extra moves
   const lastMoveTsRef = useRef(0);
   const difficultySettings = getDifficultySettings(state.difficulty);
+  
+  // Lightning trail effect
+  const [lightningTrails, setLightningTrails] = useState<Array<{id: string, x: number, y: number, color: string, opacity: Animated.Value}>>([]);
+  const trailIdRef = useRef(0);
+
+  // Create lightning trail effect
+  const createLightningTrail = (x: number, y: number, color: string) => {
+    const id = `trail-${trailIdRef.current++}`;
+    const opacity = new Animated.Value(1);
+    
+    const trail = { id, x, y, color, opacity };
+    setLightningTrails(prev => [...prev, trail]);
+    
+    // Animate trail fade out
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 1000, // Longer duration to see them better
+      useNativeDriver: true,
+    }).start(() => {
+      setLightningTrails(prev => prev.filter(t => t.id !== id));
+    });
+  };
+
+  // Track hard drop for lightning trails
+  const [isHardDropping, setIsHardDropping] = useState(false);
+  const hardDropPieceRef = useRef<FallingPiece | null>(null);
+  
+  // Create lightning trails immediately when hard drop starts
+  useEffect(() => {
+    if (isHardDropping && hardDropPieceRef.current) {
+      const piece = hardDropPieceRef.current;
+      const color = COLORS[['I','O','T','J','L','S','Z'].indexOf(piece.id) + 1];
+      piece.m.forEach((row, y) => {
+        row.forEach((cell, x) => {
+          if (cell) {
+            const fx = (piece.x + x) * tile;
+            const fy = (piece.y + y) * tile;
+            if (fy >= 0) {
+              createLightningTrail(fx, fy, color);
+            }
+          }
+        });
+      });
+    }
+  }, [isHardDropping, tile]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -88,12 +134,25 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
       const dt = Date.now() - startTSRef.current;
       const dist = Math.hypot(gs.dx, gs.dy);
       const smallTap = dist < 8 && dt < 250;
+      
+      
       if (smallTap) {
         onRotate && onRotate(1);
         return;
       }
-      if (onHardDrop && difficultySettings.hardDropEnabled && (gs.vy > 1.1 || gs.dy > tile * 2.5)) {
+      if (onHardDrop && difficultySettings.hardDropEnabled && (gs.vy > 0.001 || gs.dy > 5)) {
+        // Store the piece that's being hard dropped BEFORE calling onHardDrop
+        if (state.falling) {
+          hardDropPieceRef.current = { ...state.falling };
+        }
+        setIsHardDropping(true);
+        onHardDropStart && onHardDropStart();
         onHardDrop();
+        // Reset hard dropping state after a longer delay to allow trails
+        setTimeout(() => {
+          setIsHardDropping(false);
+          hardDropPieceRef.current = null;
+        }, 500);
       }
     },
   }), [tile, thresholdH, thresholdV, onMove, onSoftDrop, onHardDrop, onRotate, difficultySettings.hardDropEnabled]);
@@ -135,6 +194,24 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
         const color = COLORS[['I','O','T','J','L','S','Z'].indexOf(state.falling!.id) + 1];
         return <View key={`f-${x}-${y}`} style={[styles.falling, { left: fx, top: fy, width: tile, height: tile, backgroundColor: color }]} />;
       }))}
+
+      {/* Lightning trails */}
+      {lightningTrails.map(trail => (
+        <Animated.View
+          key={trail.id}
+          style={[
+            styles.lightningTrail,
+            {
+              left: trail.x,
+              top: trail.y,
+              width: tile,
+              height: tile,
+              backgroundColor: trail.color,
+              opacity: trail.opacity,
+            }
+          ]}
+        />
+      ))}
     </View>
   );
 }
@@ -167,5 +244,17 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: '#888',
     backgroundColor: 'transparent',
+  },
+  lightningTrail: {
+    position: 'absolute',
+    borderRadius: 6,
+    borderWidth: 3,
+    borderColor: '#ffff00',
+    backgroundColor: '#ffff00',
+    shadowColor: '#ffff00',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 15,
   },
 });
