@@ -39,4 +39,7 @@ export interface GameState {
   gravityAcc: number;      // accumulated dt
   lockDelayMs: number;     // e.g., 500ms
   lockAcc: number | null;  // null when not touching ground
+  // line completion animation
+  clearingLines: number[]; // rows currently being cleared
+  clearAnimationPhase: 'none' | 'flashing' | 'clearing';
 }

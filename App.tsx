@@ -72,6 +72,10 @@ export default function App() {
     dispatch({ type: 'HARD_DROP' });
   };
 
+  const handleCompleteLineClear = () => {
+    dispatch({ type: 'COMPLETE_LINE_CLEAR' });
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
@@ -115,6 +119,7 @@ export default function App() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                 }}
                 onRotate={(dir) => dispatch({ type: 'ROTATE', dir })}
+                onCompleteLineClear={handleCompleteLineClear}
               />
             </View>
             <View style={styles.actionsRow}>

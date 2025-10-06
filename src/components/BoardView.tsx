@@ -21,9 +21,10 @@ type Handlers = {
   onHardDrop?: () => void;
   onRotate?: (dir: 1 | -1) => void;
   onHardDropStart?: () => void;
+  onCompleteLineClear?: () => void;
 };
 
-export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop, onHardDrop, onRotate, onHardDropStart }: { state: GameState; maxWidthOverride?: number } & Handlers) {
+export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop, onHardDrop, onRotate, onHardDropStart, onCompleteLineClear }: { state: GameState; maxWidthOverride?: number } & Handlers) {
   const cols = state.grid[0].length;
   const rows = state.grid.length;
   const win = Dimensions.get('window');
@@ -49,6 +50,9 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
   // Lightning trail effect
   const [lightningTrails, setLightningTrails] = useState<Array<{id: string, x: number, y: number, color: string, opacity: Animated.Value}>>([]);
   const trailIdRef = useRef(0);
+
+  // Line clearing animation
+  const [lineFlashOpacity, setLineFlashOpacity] = useState(new Animated.Value(1));
 
   // Create lightning trail effect
   const createLightningTrail = (x: number, y: number, color: string) => {
@@ -90,6 +94,33 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
       });
     }
   }, [isHardDropping, tile]);
+
+  // Line clearing animation effect
+  useEffect(() => {
+    if (state.clearAnimationPhase === 'flashing') {
+      // Start flashing animation
+      const flashAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(lineFlashOpacity, {
+            toValue: 0.3,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lineFlashOpacity, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ]),
+        { iterations: 3 }
+      );
+      
+      flashAnimation.start(() => {
+        // After flashing, trigger line clear completion
+        onCompleteLineClear && onCompleteLineClear();
+      });
+    }
+  }, [state.clearAnimationPhase, lineFlashOpacity]);
 
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -167,16 +198,25 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
     <View style={[styles.wrapper, { width, height }]} {...panResponder.panHandlers}>      
       {state.grid.map((row, ry) => (
         <View key={ry} style={{ flexDirection: 'row' }}>
-          {row.map((c, rx) => (
-            <View
-              key={rx}
-              style={[
-                styles.cell,
-                { width: tile, height: tile, backgroundColor: COLORS[c] },
-                c !== 0 && styles.brick,
-              ]}
-            />
-          ))}
+          {row.map((c, rx) => {
+            const isClearing = state.clearingLines && state.clearingLines.includes(ry);
+            return (
+              <Animated.View
+                key={rx}
+                style={[
+                  styles.cell,
+                  { 
+                    width: tile, 
+                    height: tile, 
+                    backgroundColor: isClearing ? '#ffffff' : COLORS[c],
+                    opacity: isClearing ? lineFlashOpacity : 1,
+                  },
+                  c !== 0 && !isClearing && styles.brick,
+                  isClearing && styles.clearingBrick,
+                ]}
+              />
+            );
+          })}
         </View>
       ))}
 
@@ -231,6 +271,15 @@ const styles = StyleSheet.create({
   },
   brick: {
     borderColor: '#0a0a0a',
+  },
+  clearingBrick: {
+    borderColor: '#ffffff',
+    borderWidth: 2,
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 10,
   },
   falling: {
     position: 'absolute',

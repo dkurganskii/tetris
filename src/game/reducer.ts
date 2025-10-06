@@ -14,7 +14,9 @@ type Action =
   | { type: 'PAUSE_TOGGLE' }
   | { type: 'NEW_GAME' }
   | { type: 'SET_DIFFICULTY'; difficulty: DifficultyLevel }
-  | { type: 'LOAD_BEST'; best: number };
+  | { type: 'LOAD_BEST'; best: number }
+  | { type: 'START_LINE_CLEAR'; lines: number[] }
+  | { type: 'COMPLETE_LINE_CLEAR' };
 
 let bag = new SevenBag();
 
@@ -50,12 +52,45 @@ export function initialState(bestScore = 0, difficulty: DifficultyLevel = 'mediu
     gravityAcc: 0,
     lockDelayMs: settings.lockDelayMs,
     lockAcc: null,
+    clearingLines: [],
+    clearAnimationPhase: 'none',
   };
 }
 
 export function reducer(state: GameState, a: Action): GameState {
   if (a.type === 'LOAD_BEST') {
     return { ...state, bestScore: a.best };
+  }
+  if (a.type === 'START_LINE_CLEAR') {
+    return { ...state, clearingLines: a.lines, clearAnimationPhase: 'flashing' };
+  }
+  if (a.type === 'COMPLETE_LINE_CLEAR') {
+    const { grid: cleared } = clearLines(state.grid);
+    const lines = state.lines + state.clearingLines.length;
+    const level = Math.floor(lines / 10);
+    const gained = scoreForClears(state.clearingLines.length, level);
+    const score = state.score + gained;
+    const bestScore = Math.max(state.bestScore, score);
+    const { piece, next } = spawn(state.next);
+    const topout = collides(cleared, piece);
+    if (bestScore > state.bestScore) saveBest(bestScore);
+    return {
+      ...state,
+      grid: cleared,
+      falling: topout ? null : piece,
+      next,
+      score,
+      lines,
+      level,
+      bestScore,
+      combo: state.clearingLines.length > 0 ? (state.combo + 1) : -1,
+      clearingLines: [],
+      clearAnimationPhase: 'none',
+      gravityMs: gravityForLevel(level),
+      gravityAcc: 0,
+      lockAcc: null,
+      status: topout ? 'over' : 'playing',
+    };
   }
   if (state.status !== 'playing' && a.type !== 'NEW_GAME' && a.type !== 'PAUSE_TOGGLE') return state;
 
@@ -107,30 +142,33 @@ export function reducer(state: GameState, a: Action): GameState {
       }
       // lock
       let grid = mergePiece(state.grid, fp);
-      const { grid: cleared, cleared: n } = clearLines(grid);
-      const lines = state.lines + n;
-      const level = Math.floor(lines / 10);
-      const gained = scoreForClears(n, level) + dist * 2;
-      const score = state.score + gained;
-      const bestScore = Math.max(state.bestScore, score);
-      const { piece, next } = spawn(state.next);
-      const topout = collides(cleared, piece);
-      if (bestScore > state.bestScore) saveBest(bestScore);
-      return {
-        ...state,
-        grid: cleared,
-        falling: topout ? null : piece,
-        next,
-        score,
-        lines,
-        level,
-        bestScore,
-        combo: n > 0 ? (state.combo + 1) : -1,
-        status: topout ? 'over' : 'playing',
-        gravityMs: gravityForLevel(level),
-        gravityAcc: 0,
-        lockAcc: null,
-      };
+      const { grid: cleared, cleared: n, clearedRows } = clearLines(grid);
+      
+      if (n > 0) {
+        // Start line clear animation
+        return {
+          ...state,
+          grid: mergePiece(state.grid, fp), // Don't clear lines yet
+          falling: null, // Remove falling piece
+          score: state.score + dist * 2, // Add hard drop bonus
+          clearingLines: clearedRows,
+          clearAnimationPhase: 'flashing',
+        };
+      } else {
+        // No lines to clear, proceed normally
+        const { piece, next } = spawn(state.next);
+        const topout = collides(grid, piece);
+        return {
+          ...state,
+          grid,
+          falling: topout ? null : piece,
+          next,
+          score: state.score + dist * 2,
+          gravityAcc: 0,
+          lockAcc: null,
+          status: topout ? 'over' : 'playing',
+        };
+      }
     }
 
     case 'ROTATE': {
@@ -167,30 +205,33 @@ export function reducer(state: GameState, a: Action): GameState {
           // lock piece
           const fp = s.falling!;
           let grid = mergePiece(s.grid, fp);
-          const { grid: cleared, cleared: n } = clearLines(grid);
-          const lines = s.lines + n;
-          const level = Math.floor(lines / 10);
-          const gained = scoreForClears(n, level);
-          const score = s.score + gained;
-          const bestScore = Math.max(s.bestScore, score);
-          const { piece, next } = spawn(s.next);
-          const topout = collides(cleared, piece);
-          if (bestScore > s.bestScore) saveBest(bestScore);
-          return {
-            ...s,
-            grid: cleared,
-            falling: topout ? null : piece,
-            next,
-            score,
-            lines,
-            level,
-            bestScore,
-            combo: n > 0 ? (s.combo + 1) : -1,
-            status: topout ? 'over' : 'playing',
-            gravityMs: gravityForLevel(level),
-            gravityAcc,
-            lockAcc: null,
-          };
+          const { grid: cleared, cleared: n, clearedRows } = clearLines(grid);
+          
+          if (n > 0) {
+            // Start line clear animation
+            return {
+              ...s,
+              grid: mergePiece(s.grid, fp), // Don't clear lines yet
+              falling: null, // Remove falling piece
+              clearingLines: clearedRows,
+              clearAnimationPhase: 'flashing',
+              gravityAcc,
+              lockAcc: null,
+            };
+          } else {
+            // No lines to clear, proceed normally
+            const { piece, next } = spawn(s.next);
+            const topout = collides(grid, piece);
+            return {
+              ...s,
+              grid,
+              falling: topout ? null : piece,
+              next,
+              gravityAcc,
+              lockAcc: null,
+              status: topout ? 'over' : 'playing',
+            };
+          }
         }
       }
       return { ...s, gravityAcc, lockAcc };

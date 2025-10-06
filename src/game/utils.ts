@@ -32,19 +32,21 @@ export function mergePiece(grid: Grid, fp: FallingPiece): Grid {
   return out;
 }
 
-export function clearLines(grid: Grid): { grid: Grid; cleared: number } {
+export function clearLines(grid: Grid): { grid: Grid; cleared: number; clearedRows: number[] } {
   const rows = grid.length, cols = grid[0].length;
   const kept: Grid = [];
+  const clearedRows: number[] = [];
   let cleared = 0;
   for (let r = 0; r < rows; r++) {
     if (grid[r].every(c => c !== 0)) {
       cleared++;
+      clearedRows.push(r);
     } else {
       kept.push(grid[r]);
     }
   }
   while (kept.length < rows) kept.unshift(Array<Cell>(cols).fill(0 as Cell));
-  return { grid: kept, cleared };
+  return { grid: kept, cleared, clearedRows };
 }
 
 // Basic score table (multiplied by (level+1))
