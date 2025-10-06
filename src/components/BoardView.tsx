@@ -161,31 +161,33 @@ export default function BoardView({ state, maxWidthOverride, onMove, onSoftDrop,
         lastMoveTsRef.current = now;
       }
     },
-    onPanResponderRelease: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
-      const dt = Date.now() - startTSRef.current;
-      const dist = Math.hypot(gs.dx, gs.dy);
-      const smallTap = dist < 8 && dt < 250;
-      
-      
-      if (smallTap) {
-        onRotate && onRotate(1);
-        return;
-      }
-      if (onHardDrop && difficultySettings.hardDropEnabled && (gs.vy > 0.001 || gs.dy > 5)) {
-        // Store the piece that's being hard dropped BEFORE calling onHardDrop
-        if (state.falling) {
-          hardDropPieceRef.current = { ...state.falling };
-        }
-        setIsHardDropping(true);
-        onHardDropStart && onHardDropStart();
-        onHardDrop();
-        // Reset hard dropping state after a longer delay to allow trails
-        setTimeout(() => {
-          setIsHardDropping(false);
-          hardDropPieceRef.current = null;
-        }, 500);
-      }
-    },
+            onPanResponderRelease: (_evt: GestureResponderEvent, gs: PanResponderGestureState) => {
+              const dt = Date.now() - startTSRef.current;
+              const dist = Math.hypot(gs.dx, gs.dy);
+              const smallTap = dist < 8 && dt < 250;
+              
+              // Only rotate on a very small tap with no movement
+              if (smallTap && dist < 5) {
+                onRotate && onRotate(1);
+                return;
+              }
+              
+              // Hard drop on quick downward movement
+              if (onHardDrop && difficultySettings.hardDropEnabled && (gs.vy > 0.3 || gs.dy > 20)) {
+                // Store the piece that's being hard dropped BEFORE calling onHardDrop
+                if (state.falling) {
+                  hardDropPieceRef.current = { ...state.falling };
+                }
+                setIsHardDropping(true);
+                onHardDropStart && onHardDropStart();
+                onHardDrop();
+                // Reset hard dropping state after a longer delay to allow trails
+                setTimeout(() => {
+                  setIsHardDropping(false);
+                  hardDropPieceRef.current = null;
+                }, 500);
+              }
+            },
   }), [tile, thresholdH, thresholdV, onMove, onSoftDrop, onHardDrop, onRotate, difficultySettings.hardDropEnabled]);
   
   const ghost = useMemo(() => {
